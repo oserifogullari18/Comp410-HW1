@@ -106,30 +106,24 @@ point4 BallCenter = point4(0, 0, 0, 0);
 const int NumTimesToSubdivide = 5;
 const int NumTriangles = 4096;
 // (4 faces)^(NumTimesToSubdivide + 1)
-const int NumVertices = 3 * NumTriangles;
-point4 points[NumVertices];
-color4 colorsSPHERE[NumVertices];
-vec3 normals[NumVertices];
+const int NumVerticesSPHERE = 3 * NumTriangles;
+point4 pointsSPHERE[NumVerticesSPHERE];
+color4 colorsSPHERE[NumVerticesSPHERE];
 
 int IndexSPHERE = 0;
 
 void triangle(const point4 &a, const point4 &b, const point4 &c) {
-  vec3 normal = normalize(cross(b - a, c - b));
   colorsSPHERE[IndexSPHERE] = paintColor;
-  points[IndexSPHERE] = a;
-  normals[IndexSPHERE] = normal;
+  pointsSPHERE[IndexSPHERE] = a;
   IndexSPHERE++;
   colorsSPHERE[IndexSPHERE] = paintColor;
-  points[IndexSPHERE] = b;
-  normals[IndexSPHERE] = normal;
+  pointsSPHERE[IndexSPHERE] = b;
   IndexSPHERE++;
   colorsSPHERE[IndexSPHERE] = paintColor;
-  points[IndexSPHERE] = c;
-  normals[IndexSPHERE] = normal;
-
+  pointsSPHERE[IndexSPHERE] = c;
   IndexSPHERE++;
 }
-//----------------------------------------------------------------------
+
 point4 unit(const point4 &p) {
   float len = p.x * p.x + p.y * p.y + p.z * p.z;
   point4 t;
@@ -153,20 +147,25 @@ void divide_triangle(const point4 &a, const point4 &b, const point4 &c,
     triangle(a, b, c);
   }
 }
-void tetrahedron(int count) {
+void tetrahedron(int count, vec4 ballCenter) {
   point4 v[4] = {vec4(0.0, 0.0, 1.0, 1.0), vec4(0.0, 0.942809, -0.333333, 1.0),
                  vec4(-0.816497, -0.471405, -0.333333, 1.0),
                  vec4(0.816497, -0.471405, -0.333333, 1.0)};
   IndexSPHERE = 0;
-
   divide_triangle(v[0], v[1], v[2], count);
   divide_triangle(v[3], v[2], v[1], count);
   divide_triangle(v[0], v[3], v[1], count);
   divide_triangle(v[0], v[2], v[3], count);
-}
 
-GLuint cube_indices[] = {0, 1, 3, 2, 3, 0, 1, 5, 6, 6, 2, 1, 7, 6, 5, 5, 4, 7,
-                         4, 0, 3, 3, 7, 4, 4, 5, 1, 1, 0, 4, 3, 2, 6, 6, 7, 3};
+  for (int i = 0; i < NumVerticesSPHERE; i++) {
+    pointsSPHERE[i] =
+        vec4(pointsSPHERE[i].x * (radius), pointsSPHERE[i].y * (radius),
+             pointsSPHERE[i].z * (radius), 1.0);
+    pointsSPHERE[i] =
+        vec4(pointsSPHERE[i].x + ballCenter.x, pointsSPHERE[i].y + ballCenter.y,
+             pointsSPHERE[i].z + ballCenter.z, 1.0);
+  }
+}
 
 void init() {
   // Load shaders and use the resulting shader program
@@ -176,7 +175,7 @@ void init() {
   colorcube(); // create the cube in terms of 6 faces each of which is made of
                // two triangles
 
-  tetrahedron(NumTimesToSubdivide);
+  tetrahedron(NumTimesToSubdivide, BallCenter);
 
   // Create a vertex array object
   GLuint vao;
@@ -205,13 +204,12 @@ void init() {
                           BUFFER_OFFSET(sizeof(pointsCube)));
   } else {
     glBindBuffer(GL_ARRAY_BUFFER, buffer);
-    glBufferData(GL_ARRAY_BUFFER,
-                 sizeof(points) + sizeof(colorsSPHERE) + sizeof(normals), NULL,
-                 GL_STATIC_DRAW);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(points), points);
-    glBufferSubData(GL_ARRAY_BUFFER, sizeof(points), sizeof(colorsSPHERE),
+    glBufferData(GL_ARRAY_BUFFER, sizeof(pointsSPHERE) + sizeof(colorsSPHERE),
+                 NULL, GL_STATIC_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(pointsSPHERE), pointsSPHERE);
+    glBufferSubData(GL_ARRAY_BUFFER, sizeof(pointsSPHERE), sizeof(colorsSPHERE),
                     colorsSPHERE);
-    glBufferSubData(GL_ARRAY_BUFFER, sizeof(points), sizeof(normals), normals);
+
     GLuint vPosition = glGetAttribLocation(program, "vPosition");
     glEnableVertexAttribArray(vPosition);
     glVertexAttribPointer(vPosition, 4, GL_FLOAT, GL_FALSE, 0,
@@ -219,7 +217,7 @@ void init() {
     GLuint vColor = glGetAttribLocation(program, "vColor");
     glEnableVertexAttribArray(vColor);
     glVertexAttribPointer(vColor, 4, GL_FLOAT, GL_FALSE, 0,
-                          BUFFER_OFFSET(sizeof(points)));
+                          BUFFER_OFFSET(sizeof(pointsSPHERE)));
   }
 
   // Retrieve transformation uniform variable locations
