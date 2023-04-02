@@ -220,10 +220,6 @@ void init() {
     glEnableVertexAttribArray(vColor);
     glVertexAttribPointer(vColor, 4, GL_FLOAT, GL_FALSE, 0,
                           BUFFER_OFFSET(sizeof(points)));
-    GLuint vNormal = glGetAttribLocation(program, "vNormal");
-    glEnableVertexAttribArray(vNormal);
-    glVertexAttribPointer(vNormal, 4, GL_FLOAT, GL_FALSE, 0,
-                          BUFFER_OFFSET(sizeof(points) + sizeof(colorsSPHERE)));
   }
 
   // Retrieve transformation uniform variable locations
