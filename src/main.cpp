@@ -10,29 +10,44 @@ typedef vec4 point4;
 
 // Ball Bouncing Parameters
 float radius = 0.025;
-float ballSpeedX = 0.0005;
-float ballSpeedY = 0;
+float ballSpeedX = 0.005;
+float ballSpeedY = 0; // initial vertical velocity
 float ballSpeedZ = 0;
-float gravitiy = 0.00098;
-float dt = 0.1;
-float rho = 0.85;
+float gravitiy = 0.00098; // constant acceleration
+float dt = 0.1;           // small time interval
+float rho = 0.85;         // Velocity reduction factor after hitting the ground
+// current position of the ball
+// initialize at top left corner(-1,1)
 vec3 h_current(-1.0, 1.0, 0.0);
 vec3 *h_current_ptr = &h_current;
 
 // Draw Mode
 GLenum draw_mode = GL_TRIANGLES;
 bool isSolid = true;
+// shape type
 bool isCube = false;
 
 // Color selection modes
-int color_selection = 2;
+int color_selection = 0;
 int *color_selection_ptr = &color_selection;
 
-// Data for Cubes
+// Define vao vbo and shader variables
+GLuint vPosition;
+GLuint vColor;
+GLuint vao;
+GLuint buffer;
+
+// Array of rotation angles (in degrees) for each coordinate axis
+enum { Xaxis = 0, Yaxis = 1, Zaxis = 2, NumAxes = 3 };
+int Axis = Xaxis;
+GLfloat Theta[NumAxes] = {0.0, 0.0, 0.0};
+
+///////////////// Data for Cube ////////////////////////
 const int NumTrianglesCube = 12;
 // (4 faces)^(NumTimesToSubdivide + 1)
 const int NumVerticesCube = 3 * NumTrianglesCube;
 
+// define point and color array for cube
 point4 pointsCube[NumVerticesCube];
 color4 colorsCube[NumVerticesCube];
 
@@ -46,25 +61,20 @@ point4 verticesCube[8]{point4(-radius, -radius, radius, 1.0),
                        point4(radius, radius, -radius, 1.0),
                        point4(radius, -radius, -radius, 1.0)};
 
-color4 vertexColorsCube[8] = {
-    color4(0.0, 0.0, 0.0, 1.0), // black
-    color4(1.0, 0.0, 0.0, 1.0), // red
+// vertex colors
+color4 vertexColors[2] = {
     color4(1.0, 1.0, 0.0, 1.0), // yellow
-    color4(0.0, 1.0, 0.0, 1.0), // green
-    color4(0.0, 0.0, 1.0, 1.0), // blue
-    color4(1.0, 0.0, 1.0, 1.0), // magenta
-    color4(1.0, 1.0, 1.0, 1.0), // white
     color4(0.0, 1.0, 1.0, 1.0)  // cyan
 };
 
-color4 paintColor = vertexColorsCube[color_selection];
+// initialize current color for painting
+color4 paintColor = vertexColors[color_selection];
 
 // Model-view and projection matrices uniform location
 GLuint ModelView, Projection;
 
 // quad generates two triangles for each face and assigns colors to the vertices
 int Index = 0;
-
 void quad(int a, int b, int c, int d) {
   colorsCube[Index] = paintColor;
   pointsCube[Index] = verticesCube[a];
@@ -89,8 +99,7 @@ void quad(int a, int b, int c, int d) {
 //----------------------------------------------------------------------------
 
 // generate 12 triangles: 36 vertices and 36 colors
-
-void colorcube() {
+void cube() {
   Index = 0;
   quad(1, 0, 3, 2);
   quad(2, 3, 7, 6);
@@ -100,18 +109,19 @@ void colorcube() {
   quad(5, 4, 0, 1);
 }
 
-/// Data for Sphere
+//////////// Data for Sphere ////////////////
+// initialize ball center at the origin
 point4 BallCenter = point4(0, 0, 0, 0);
-
+// Recursion count to create sphere
 const int NumTimesToSubdivide = 5;
-const int NumTriangles = 4096;
-// (4 faces)^(NumTimesToSubdivide + 1)
+const int NumTriangles = 4096; // (4 faces)^(NumTimesToSubdivide + 1)
 const int NumVerticesSPHERE = 3 * NumTriangles;
+// define point and color arrays for sphere
 point4 pointsSPHERE[NumVerticesSPHERE];
 color4 colorsSPHERE[NumVerticesSPHERE];
 
+// function definitions to create sphere
 int IndexSPHERE = 0;
-
 void triangle(const point4 &a, const point4 &b, const point4 &c) {
   colorsSPHERE[IndexSPHERE] = paintColor;
   pointsSPHERE[IndexSPHERE] = a;
@@ -168,54 +178,65 @@ void tetrahedron(int count, vec4 ballCenter) {
 }
 
 void init() {
+
+  cube(); // initialize point and color arrays for cube
+
+  tetrahedron(NumTimesToSubdivide,
+              BallCenter); // initialize point and color arrays for sphere
+
   // Load shaders and use the resulting shader program
   GLuint program = InitShader("src/vshader.glsl", "src/fshader.glsl");
   glUseProgram(program);
 
-  colorcube(); // create the cube in terms of 6 faces each of which is made of
-               // two triangles
-
-  tetrahedron(NumTimesToSubdivide, BallCenter);
-
-  // Create a vertex array object
-  GLuint vao;
+  // Create and bind a vertex array object
   glGenVertexArrays(1, &vao);
   glBindVertexArray(vao);
 
-  // Create and initialize a buffer object
-  GLuint buffer;
+  // Create and bind a buffer object
   glGenBuffers(1, &buffer);
+  glBindBuffer(GL_ARRAY_BUFFER, buffer);
+
   if (isCube) {
-    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    // initialize buffer for data
     glBufferData(GL_ARRAY_BUFFER, sizeof(pointsCube) + sizeof(colorsCube), NULL,
                  GL_STATIC_DRAW);
+    // put points array into buffer
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(pointsCube), pointsCube);
+    // put color array into buffer
     glBufferSubData(GL_ARRAY_BUFFER, sizeof(pointsCube), sizeof(colorsCube),
                     colorsCube);
 
-    // set up vertex arrays
-    GLuint vPosition = glGetAttribLocation(program, "vPosition");
+    // set up position arrays
+    vPosition = glGetAttribLocation(program, "vPosition");
     glEnableVertexAttribArray(vPosition);
+    // Vertex Attribute Pointer for points
     glVertexAttribPointer(vPosition, 4, GL_FLOAT, GL_FALSE, 0,
                           BUFFER_OFFSET(0));
-    GLuint vColor = glGetAttribLocation(program, "vColor");
+    // set up color arrays with shaders
+    vColor = glGetAttribLocation(program, "vColor");
     glEnableVertexAttribArray(vColor);
+    // Vertex Attribute Pointer for colors
     glVertexAttribPointer(vColor, 4, GL_FLOAT, GL_FALSE, 0,
                           BUFFER_OFFSET(sizeof(pointsCube)));
   } else {
-    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    // initialize buffer for data
     glBufferData(GL_ARRAY_BUFFER, sizeof(pointsSPHERE) + sizeof(colorsSPHERE),
                  NULL, GL_STATIC_DRAW);
+    // put points array into buffer
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(pointsSPHERE), pointsSPHERE);
+    // put color array into buffer
     glBufferSubData(GL_ARRAY_BUFFER, sizeof(pointsSPHERE), sizeof(colorsSPHERE),
                     colorsSPHERE);
-
-    GLuint vPosition = glGetAttribLocation(program, "vPosition");
+    // set up position arrays with shaders
+    vPosition = glGetAttribLocation(program, "vPosition");
     glEnableVertexAttribArray(vPosition);
+    // Vertex Attribute Pointer for points
     glVertexAttribPointer(vPosition, 4, GL_FLOAT, GL_FALSE, 0,
                           BUFFER_OFFSET(0));
-    GLuint vColor = glGetAttribLocation(program, "vColor");
+    // set up color arrays with shaders
+    vColor = glGetAttribLocation(program, "vColor");
     glEnableVertexAttribArray(vColor);
+    // Vertex Attribute Pointer for colors
     glVertexAttribPointer(vColor, 4, GL_FLOAT, GL_FALSE, 0,
                           BUFFER_OFFSET(sizeof(pointsSPHERE)));
   }
@@ -231,33 +252,44 @@ void init() {
   glUniformMatrix4fv(Projection, 1, GL_TRUE, projection);
 
   glEnable(GL_DEPTH_TEST);
-  glEnable(GL_COLOR_MATERIAL);
 
   // specify the color to clear the screen
   glClearColor(0, 0, 0, 1.0);
 }
 
-//---------------------------------------------------------------------
-//
-// display
-//
+/// Rotate function (x,y axis)
+void rotate(void) {
+  Theta[Xaxis] += 4.0;
 
+  if (Theta[Xaxis] > 360.0) {
+    Theta[Xaxis] -= 360.0;
+  }
+
+  Theta[Yaxis] += 4.0;
+
+  if (Theta[Yaxis] > 360.0) {
+    Theta[Yaxis] -= 360.0;
+  }
+}
+
+// display
 void display(void) {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   //  Generate the model-view matrix
-  // -1, 1, 0
   const vec3 displacement(h_current_ptr->x, h_current_ptr->y, h_current_ptr->z);
   mat4 model_view =
-      (Translate(displacement) * Scale(1.0, 1.0, 1.0) *
-       RotateX(45)); // Scale(), Translate(), RotateX(), RotateY(),
-                     // RotateZ(): user-defined functions in mat.h
+      (Translate(displacement) * Scale(1.0, 1.0, 1.0) * RotateX(Theta[Xaxis]) *
+       RotateY(Theta[Yaxis]) *
+       RotateZ(Theta[Zaxis])); // Scale(), Translate(), RotateX(), RotateY(),
+                               // RotateZ(): user-defined functions in mat.h
 
-  h_current_ptr->x = h_current_ptr->x + ballSpeedX;
-
+  // horizontal movement
+  h_current_ptr->x = h_current_ptr->x + ballSpeedX * dt;
+  // horizontal movement with gravity
   h_current_ptr->y =
       h_current_ptr->y + ballSpeedY * dt - 0.5 * gravitiy * pow(dt, 2);
-
+  // handle the case in which the ball hit to the ground
   if (h_current_ptr->y < -1) {
     h_current_ptr->y = -1;
     ballSpeedY = -ballSpeedY * rho;
@@ -266,7 +298,13 @@ void display(void) {
   }
 
   glUniformMatrix4fv(ModelView, 1, GL_TRUE, model_view);
-  glDrawArrays(draw_mode, 0, NumVerticesCube);
+  // draw mode depending on the object shape type
+  if (isCube) {
+    glDrawArrays(draw_mode, 0, NumVerticesCube);
+  } else {
+    glDrawArrays(draw_mode, 0, NumVerticesSPHERE);
+  }
+
   glFlush();
 }
 
@@ -275,19 +313,23 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action,
   if (action == GLFW_PRESS) {
     switch (key) {
     case GLFW_KEY_ESCAPE:
+      exit(EXIT_SUCCESS);
+      break;
     case GLFW_KEY_Q:
       exit(EXIT_SUCCESS);
       break;
     case GLFW_KEY_C:
-      if (*color_selection_ptr == 2) {
-        *color_selection_ptr = 7;
+      // change color selection
+      if (*color_selection_ptr == 0) {
+        *color_selection_ptr = 1;
       } else {
-        *color_selection_ptr = 2;
+        *color_selection_ptr = 0;
       }
-      paintColor = vertexColorsCube[*color_selection_ptr];
+      paintColor = vertexColors[*color_selection_ptr];
       init();
       break;
     case GLFW_KEY_I:
+      // move the object to the initial position
       h_current_ptr->x = -1;
       h_current_ptr->y = 1;
       ballSpeedY = 0;
@@ -297,6 +339,8 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action,
       printf("Press i to initialize the pose \n");
       printf("Press c to change color \n");
       printf("Press q to quit \n");
+      printf("Mouse Right Click to change the object shape type \n");
+      printf("Mouse Left Click to change the draw mode \n");
       break;
     }
   }
@@ -306,6 +350,7 @@ void mouse_button_callback(GLFWwindow *window, int button, int action,
                            int mods) {
   if (action == GLFW_PRESS) {
     switch (button) {
+    // change the object shape type
     case GLFW_MOUSE_BUTTON_RIGHT:
       if (isCube) {
         isCube = false;
@@ -315,11 +360,9 @@ void mouse_button_callback(GLFWwindow *window, int button, int action,
         init();
       }
       break;
-      // set the current object to be drawn
-      // cube
-      // sphere
     case GLFW_MOUSE_BUTTON_MIDDLE:
       break;
+    // change draw mode
     case GLFW_MOUSE_BUTTON_LEFT:
       if (isSolid) {
         isSolid = false;
@@ -353,20 +396,21 @@ void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
 }
 
 //---------------------------------------------------------------------
-//
 // main
-//
 
 int main() {
   if (!glfwInit())
     exit(EXIT_FAILURE);
 
+  // Setup opengl versions
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+  // Core Profile
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+  // Allow Forward Compatbility
   glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-  glfwWindowHint(GLFW_RESIZABLE, GL_TRUE);
 
+  // initialize GLFW window
   GLFWwindow *window = glfwCreateWindow(1440, 1080, "Ball", NULL, NULL);
   glfwMakeContextCurrent(window);
   glewExperimental = GL_TRUE;
@@ -375,14 +419,26 @@ int main() {
     glfwTerminate();
     exit(EXIT_FAILURE);
   }
+  // make resizable
+  glfwWindowHint(GLFW_RESIZABLE, GL_TRUE);
 
+  // attach user input callbacks to the window
   glfwSetKeyCallback(window, key_callback);
   glfwSetMouseButtonCallback(window, mouse_button_callback);
+  // attach reshape callbacks to the window
   glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
   init();
 
+  double frameRate = 120, currentTime, previousTime = 0.0;
   while (!glfwWindowShouldClose(window)) {
+    // rotate in 120 fps
+    currentTime = glfwGetTime();
+    if (currentTime - previousTime >= 1 / frameRate) {
+      previousTime = currentTime;
+      rotate();
+    }
+    // update screen
     display();
     glfwSwapBuffers(window);
     glfwPollEvents();
